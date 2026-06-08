@@ -1,0 +1,21 @@
+services:
+  app:
+    image: node:20-alpine
+    container_name: ${APP_NAME:-kaifa-workflow}
+    working_dir: /app
+    command: node apps/backend/dist/index.js
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3001}:${APP_PORT:-3001}"
+    environment:
+      NODE_ENV: production
+      PORT: ${APP_PORT:-3001}
+      APP_NAME: ${APP_NAME:-kaifa-workflow}
+      HOST: 0.0.0.0
+    volumes:
+      - .:/app:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${APP_PORT:-3001}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

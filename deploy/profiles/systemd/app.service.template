@@ -1,0 +1,19 @@
+[Unit]
+Description=__APP_NAME__ application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=__DEPLOY_PATH__
+Environment=NODE_ENV=production
+Environment=PORT=__APP_PORT__
+Environment=APP_NAME=__APP_NAME__
+Environment=HOST=0.0.0.0
+EnvironmentFile=-__DEPLOY_PATH__/../../shared/.env
+ExecStart=/usr/bin/node apps/backend/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

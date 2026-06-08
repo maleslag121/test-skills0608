@@ -1,0 +1,178 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            apps/frontend/dist
+            apps/backend/dist
+            deploy
+            .deploy
+            package.json
+            package-lock.json
+            apps/frontend/package.json
+            apps/backend/package.json
+          retention-days: 7
+
+  deploy-ecs:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: .
+
+      - name: Parse deploy config
+        id: config
+        run: |
+          CONFIG=$(node deploy/scripts/parse-config.mjs .deploy/config.yml)
+          echo "runtime=$(echo "$CONFIG" | jq -r '.runtime')" >> "$GITHUB_OUTPUT"
+          echo "app_name=$(echo "$CONFIG" | jq -r '.app_name')" >> "$GITHUB_OUTPUT"
+          echo "app_port=$(echo "$CONFIG" | jq -r '.app_port')" >> "$GITHUB_OUTPUT"
+          echo "deploy_path=$(echo "$CONFIG" | jq -r '.deploy_path')" >> "$GITHUB_OUTPUT"
+          echo "health_url=$(echo "$CONFIG" | jq -r '.health_check.url')" >> "$GITHUB_OUTPUT"
+          echo "health_timeout=$(echo "$CONFIG" | jq -r '.health_check.timeout_seconds // 30')" >> "$GITHUB_OUTPUT"
+          echo "keep_releases=$(echo "$CONFIG" | jq -r '.keep_releases // 3')" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ECS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.ECS_PORT || 22 }}" "${{ secrets.ECS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Prepare release on ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "mkdir -p ${DEPLOY_PATH}/releases/${RELEASE_ID} ${DEPLOY_PATH}/shared/logs"
+
+      - name: Rsync release to ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ github.sha }}
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
+            apps/ deploy/ .deploy/ package.json package-lock.json \
+            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/"
+
+          # Sync workspace package files
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
+            apps/frontend/package.json apps/backend/package.json \
+            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/apps/frontend/" 2>/dev/null || true
+
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
+            apps/backend/package.json \
+            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/apps/backend/"
+
+      - name: Install production dependencies on ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "cd ${DEPLOY_PATH}/releases/${RELEASE_ID}/apps/backend && npm install --omit=dev"
+
+      - name: Activate release
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ github.sha }}
+          RUNTIME: ${{ steps.config.outputs.runtime }}
+          APP_NAME: ${{ steps.config.outputs.app_name }}
+          APP_PORT: ${{ steps.config.outputs.app_port }}
+          HEALTH_URL: ${{ steps.config.outputs.health_url }}
+          HEALTH_TIMEOUT: ${{ steps.config.outputs.health_timeout }}
+          KEEP_RELEASES: ${{ steps.config.outputs.keep_releases }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "bash ${DEPLOY_PATH}/releases/${RELEASE_ID}/deploy/scripts/remote-activate.sh \
+              '${RUNTIME}' \
+              '${DEPLOY_PATH}/releases/${RELEASE_ID}' \
+              '${DEPLOY_PATH}' \
+              '${APP_NAME}' \
+              '${APP_PORT}' \
+              '${HEALTH_URL}' \
+              '${HEALTH_TIMEOUT}' \
+              '${KEEP_RELEASES}'"
+
+      - name: Deployment summary
+        run: |
+          echo "### Deployed successfully" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${{ steps.config.outputs.app_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Port: ${{ steps.config.outputs.app_port }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime: ${{ steps.config.outputs.runtime }}" >> "$GITHUB_STEP_SUMMARY"

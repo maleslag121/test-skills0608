@@ -1,0 +1,21 @@
+{
+  "name": "kaifa-workflow",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Full-stack CI/CD workflow template",
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/backend & npm run dev --workspace=apps/frontend",
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "build": "npm run build --workspace=apps/frontend && npm run build --workspace=apps/backend",
+    "test": "npm run test --workspace=apps/backend && npm run test --workspace=apps/frontend",
+    "lint": "npm run lint --workspace=apps/backend && npm run lint --workspace=apps/frontend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
