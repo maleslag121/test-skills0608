@@ -26,3 +26,14 @@ pre {
   margin: 0;
   overflow-x: auto;
 }
+
+.clock-card {
+  border: 1px solid #334155;
+}
+
+.clock-display {
+  margin: 0;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
