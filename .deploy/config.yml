@@ -1,10 +1,10 @@
 runtime: pm2
 app_name: kaifa-workflow
-app_port: 3001
+app_port: 3003
 deploy_path: /var/www/kaifa-workflow
 
 health_check:
-  url: http://127.0.0.1:3001/health
+  url: http://127.0.0.1:3003/health
   timeout_seconds: 30
 
 paths:
