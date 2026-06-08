@@ -117,19 +117,8 @@ jobs:
         run: |
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            apps/ deploy/ .deploy/ package.json package-lock.json \
+            apps deploy .deploy package.json package-lock.json \
             "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/"
-
-          # Sync workspace package files
-          rsync -avz \
-            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            apps/frontend/package.json apps/backend/package.json \
-            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/apps/frontend/" 2>/dev/null || true
-
-          rsync -avz \
-            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            apps/backend/package.json \
-            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/apps/backend/"
 
       - name: Install production dependencies on ECS
         env:
