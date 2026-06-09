@@ -138,10 +138,10 @@ jobs:
           DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
           RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
         run: |
-          BUNDLE_DIR="release-bundle"
-          if [[ ! -d "$BUNDLE_DIR" ]]; then
-            echo "release-bundle not found, listing workspace:"
-            ls -laR
+          BUNDLE_DIR="bundle"
+          if [[ ! -d "$BUNDLE_DIR/dist" ]]; then
+            echo "bundle layout unexpected:"
+            ls -laR "$BUNDLE_DIR" || ls -laR
             exit 1
           fi
           rsync -avz --delete \
