@@ -72,9 +72,10 @@ jobs:
       - name: Stage release files
         working-directory: web-skilltest
         run: |
-          mkdir -p ../release-bundle/deploy
+          mkdir -p ../release-bundle/deploy/scripts
           cp -r dist server deploy .deploy package.json package-lock.json ../release-bundle/
-          cp -r ../deploy/scripts ../release-bundle/deploy/
+          cp -r ../deploy/scripts/* ../release-bundle/deploy/scripts/
+          ls -laR ../release-bundle
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -101,7 +102,7 @@ jobs:
       - name: Parse deploy config
         id: config
         run: |
-          CONFIG=$(node release-bundle/deploy/scripts/parse-config.mjs release-bundle/.deploy/config.yml)
+          CONFIG=$(node deploy/scripts/parse-config.mjs web-skilltest/.deploy/config.yml)
           echo "runtime=$(echo "$CONFIG" | jq -r '.runtime')" >> "$GITHUB_OUTPUT"
           echo "app_name=$(echo "$CONFIG" | jq -r '.app_name')" >> "$GITHUB_OUTPUT"
           echo "app_port=$(echo "$CONFIG" | jq -r '.app_port')" >> "$GITHUB_OUTPUT"
@@ -137,9 +138,15 @@ jobs:
           DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
           RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
         run: |
+          BUNDLE_DIR="release-bundle"
+          if [[ ! -d "$BUNDLE_DIR" ]]; then
+            echo "release-bundle not found, listing workspace:"
+            ls -laR
+            exit 1
+          fi
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            release-bundle/ \
+            "${BUNDLE_DIR}/" \
             "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/"
 
       - name: Install production dependencies on ECS
