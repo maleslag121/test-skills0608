@@ -1,7 +1,7 @@
 const path = require('path');
 
 const appName = process.env.DEPLOY_APP_NAME || process.env.APP_NAME || 'web-skilltest';
-const appPort = Number(process.env.DEPLOY_APP_PORT || process.env.PORT || 3004);
+const appPort = Number(process.env.DEPLOY_APP_PORT || process.env.PORT || 3007);
 const deployRoot = process.env.DEPLOY_PATH || '/var/www/web-skilltest';
 const currentDir = path.join(deployRoot, 'current');
 
