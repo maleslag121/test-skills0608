@@ -1,0 +1,207 @@
+name: Web Skilltest CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-skilltest/**'
+      - '.github/workflows/web-skilltest-ci-cd.yml'
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: 'Run CI only, skip ECS deploy'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-web-skilltest
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-skilltest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web-skilltest/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    outputs:
+      deploy_sha: ${{ steps.meta.outputs.sha }}
+    defaults:
+      run:
+        working-directory: web-skilltest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve deploy SHA
+        id: meta
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web-skilltest/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-skilltest-dist
+          path: |
+            web-skilltest/dist
+            web-skilltest/server
+            web-skilltest/deploy
+            web-skilltest/.deploy
+            web-skilltest/package.json
+            web-skilltest/package-lock.json
+          retention-days: 7
+
+  deploy-ecs:
+    runs-on: ubuntu-latest
+    needs: build
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_deploy != 'true')
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-skilltest-dist
+          path: .
+
+      - name: Parse deploy config
+        id: config
+        run: |
+          CONFIG=$(node deploy/scripts/parse-config.mjs web-skilltest/.deploy/config.yml)
+          echo "runtime=$(echo "$CONFIG" | jq -r '.runtime')" >> "$GITHUB_OUTPUT"
+          echo "app_name=$(echo "$CONFIG" | jq -r '.app_name')" >> "$GITHUB_OUTPUT"
+          echo "app_port=$(echo "$CONFIG" | jq -r '.app_port')" >> "$GITHUB_OUTPUT"
+          echo "deploy_path=$(echo "$CONFIG" | jq -r '.deploy_path')" >> "$GITHUB_OUTPUT"
+          echo "health_url=$(echo "$CONFIG" | jq -r '.health_check.url')" >> "$GITHUB_OUTPUT"
+          echo "health_timeout=$(echo "$CONFIG" | jq -r '.health_check.timeout_seconds // 30')" >> "$GITHUB_OUTPUT"
+          echo "keep_releases=$(echo "$CONFIG" | jq -r '.keep_releases // 3')" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ECS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.ECS_PORT || 22 }}" "${{ secrets.ECS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Prepare release on ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "mkdir -p ${DEPLOY_PATH}/releases/${RELEASE_ID} ${DEPLOY_PATH}/shared/logs ${DEPLOY_PATH}/shared/data"
+
+      - name: Rsync release to ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
+            web-skilltest/dist web-skilltest/server web-skilltest/deploy \
+            web-skilltest/.deploy web-skilltest/package.json web-skilltest/package-lock.json \
+            deploy/scripts \
+            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/"
+
+      - name: Install production dependencies on ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "cd ${DEPLOY_PATH}/releases/${RELEASE_ID} && npm install --omit=dev"
+
+      - name: Activate release
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_PORT: ${{ secrets.ECS_PORT || 22 }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          RELEASE_ID: ${{ needs.build.outputs.deploy_sha }}
+          RUNTIME: ${{ steps.config.outputs.runtime }}
+          APP_NAME: ${{ steps.config.outputs.app_name }}
+          APP_PORT: ${{ steps.config.outputs.app_port }}
+          HEALTH_URL: ${{ steps.config.outputs.health_url }}
+          HEALTH_TIMEOUT: ${{ steps.config.outputs.health_timeout }}
+          KEEP_RELEASES: ${{ steps.config.outputs.keep_releases }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$ECS_PORT" -o StrictHostKeyChecking=no \
+            "$ECS_USER@$ECS_HOST" \
+            "bash ${DEPLOY_PATH}/releases/${RELEASE_ID}/deploy/scripts/remote-activate.sh \
+              '${RUNTIME}' \
+              '${DEPLOY_PATH}/releases/${RELEASE_ID}' \
+              '${DEPLOY_PATH}' \
+              '${APP_NAME}' \
+              '${APP_PORT}' \
+              '${HEALTH_URL}' \
+              '${HEALTH_TIMEOUT}' \
+              '${KEEP_RELEASES}'"
+
+      - name: Verify public health endpoint
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          APP_PORT: ${{ steps.config.outputs.app_port }}
+        run: |
+          URL="http://${ECS_HOST}:${APP_PORT}/health"
+          echo "Checking ${URL}"
+          for i in $(seq 1 15); do
+            if curl -fsS "$URL"; then
+              echo ""
+              echo "Public health check passed"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Public health check failed after 30s" >&2
+          exit 1
+
+      - name: Deployment summary
+        run: |
+          echo "### web-skilltest deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${{ steps.config.outputs.app_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Port: ${{ steps.config.outputs.app_port }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${{ needs.build.outputs.deploy_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: http://${{ secrets.ECS_HOST }}:${{ steps.config.outputs.app_port }}" >> "$GITHUB_STEP_SUMMARY"

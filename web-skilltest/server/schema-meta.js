@@ -1,0 +1,83 @@
+/** 数据字典元信息：表头、字段说明、填写示例，供 /api/schema 与前端展示 */
+export const SCHEMA_META = {
+  database: {
+    name: 'business.db',
+    engine: 'SQLite 3',
+    description: '营业数据报表本地持久化数据库，存储门店、订单、客户等核心业务数据。',
+  },
+  tables: [
+    {
+      table: 'stores',
+      label: '门店表',
+      description: '记录各线下/线上营业网点的基础信息，用于门店排行与订单归属。',
+      fields: [
+        { column: 'id', header: '主键 ID', type: 'INTEGER', required: true, example: '1', note: '自增主键，系统自动生成' },
+        { column: 'store_code', header: '门店编码', type: 'TEXT', required: true, example: 'SH-JAS-001', note: '唯一编码，建议格式：城市缩写-区域-序号' },
+        { column: 'store_name', header: '门店名称', type: 'TEXT', required: true, example: '静安寺旗舰店', note: '对外展示的门店全称' },
+        { column: 'city', header: '所在城市', type: 'TEXT', required: true, example: '上海', note: '门店所在城市' },
+        { column: 'district', header: '所在区县', type: 'TEXT', required: true, example: '静安区', note: '门店所在区县' },
+        { column: 'address', header: '详细地址', type: 'TEXT', required: true, example: '南京西路1788号', note: '街道门牌等完整地址' },
+        { column: 'opened_at', header: '开业日期', type: 'TEXT', required: true, example: '2019-03-15', note: '格式 YYYY-MM-DD' },
+        { column: 'status', header: '营业状态', type: 'TEXT', required: true, example: 'active', note: 'active=营业中，closed=已关闭' },
+        { column: 'created_at', header: '创建时间', type: 'TEXT', required: true, example: '2025-06-09 10:30:00', note: '记录入库时间' },
+      ],
+    },
+    {
+      table: 'categories',
+      label: '品类表',
+      description: '业务品类字典，用于按餐饮/零售/服务等维度统计营收占比。',
+      fields: [
+        { column: 'id', header: '主键 ID', type: 'INTEGER', required: true, example: '1', note: '自增主键' },
+        { column: 'category_code', header: '品类编码', type: 'TEXT', required: true, example: 'CAT-FOOD', note: '唯一编码' },
+        { column: 'category_name', header: '品类名称', type: 'TEXT', required: true, example: '餐饮', note: '展示名称' },
+        { column: 'sort_order', header: '排序', type: 'INTEGER', required: true, example: '1', note: '数值越小越靠前' },
+        { column: 'created_at', header: '创建时间', type: 'TEXT', required: true, example: '2025-06-09 10:30:00', note: '记录入库时间' },
+      ],
+    },
+    {
+      table: 'channels',
+      label: '渠道表',
+      description: '销售渠道字典，区分门店堂食、外卖平台、线上商城等来源。',
+      fields: [
+        { column: 'id', header: '主键 ID', type: 'INTEGER', required: true, example: '1', note: '自增主键' },
+        { column: 'channel_code', header: '渠道编码', type: 'TEXT', required: true, example: 'CH-OFFLINE', note: '唯一编码' },
+        { column: 'channel_name', header: '渠道名称', type: 'TEXT', required: true, example: '门店', note: '展示名称' },
+        { column: 'color', header: '图表颜色', type: 'TEXT', required: true, example: '#00c9a7', note: '前端环形图/图例色值' },
+        { column: 'sort_order', header: '排序', type: 'INTEGER', required: true, example: '1', note: '展示顺序' },
+        { column: 'created_at', header: '创建时间', type: 'TEXT', required: true, example: '2025-06-09 10:30:00', note: '记录入库时间' },
+      ],
+    },
+    {
+      table: 'customers',
+      label: '客户表',
+      description: '注册客户信息，用于统计新增客户数及首单门店分析。',
+      fields: [
+        { column: 'id', header: '主键 ID', type: 'INTEGER', required: true, example: '1001', note: '自增主键' },
+        { column: 'customer_no', header: '客户编号', type: 'TEXT', required: true, example: 'C20250609001', note: '唯一客户编号' },
+        { column: 'customer_name', header: '客户姓名', type: 'TEXT', required: true, example: '张*', note: '已脱敏姓名' },
+        { column: 'phone_masked', header: '手机号（脱敏）', type: 'TEXT', required: true, example: '138****5678', note: '中间四位隐藏' },
+        { column: 'gender', header: '性别', type: 'TEXT', required: false, example: 'M', note: 'M=男，F=女，U=未知' },
+        { column: 'registered_at', header: '注册时间', type: 'TEXT', required: true, example: '2025-06-09 09:15:00', note: '客户首次注册时间' },
+        { column: 'first_order_store_id', header: '首单门店 ID', type: 'INTEGER', required: false, example: '1', note: '关联 stores.id' },
+        { column: 'created_at', header: '创建时间', type: 'TEXT', required: true, example: '2025-06-09 10:30:00', note: '记录入库时间' },
+      ],
+    },
+    {
+      table: 'orders',
+      label: '订单表',
+      description: '核心交易明细，展板所有 KPI、趋势、排行均由此表聚合计算。',
+      fields: [
+        { column: 'id', header: '主键 ID', type: 'INTEGER', required: true, example: '50001', note: '自增主键' },
+        { column: 'order_no', header: '订单号', type: 'TEXT', required: true, example: 'ORD202506091030001', note: '唯一订单号' },
+        { column: 'store_id', header: '门店 ID', type: 'INTEGER', required: true, example: '1', note: '关联 stores.id' },
+        { column: 'category_id', header: '品类 ID', type: 'INTEGER', required: true, example: '1', note: '关联 categories.id' },
+        { column: 'channel_id', header: '渠道 ID', type: 'INTEGER', required: true, example: '1', note: '关联 channels.id' },
+        { column: 'customer_id', header: '客户 ID', type: 'INTEGER', required: false, example: '1001', note: '散客可为空，关联 customers.id' },
+        { column: 'order_amount', header: '订单金额（元）', type: 'REAL', required: true, example: '128.50', note: '实付金额，保留两位小数' },
+        { column: 'order_time', header: '下单时间', type: 'TEXT', required: true, example: '2025-06-09 12:35:18', note: '格式 YYYY-MM-DD HH:MM:SS' },
+        { column: 'pay_status', header: '支付状态', type: 'TEXT', required: true, example: 'paid', note: 'paid=已支付，refunded=已退款' },
+        { column: 'created_at', header: '创建时间', type: 'TEXT', required: true, example: '2025-06-09 12:35:20', note: '记录入库时间' },
+      ],
+    },
+  ],
+};

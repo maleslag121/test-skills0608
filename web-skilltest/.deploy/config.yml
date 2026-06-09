@@ -1,0 +1,26 @@
+runtime: pm2
+app_name: web-skilltest
+app_port: 3004
+deploy_path: /var/www/web-skilltest
+
+health_check:
+  url: http://127.0.0.1:3004/health
+  timeout_seconds: 30
+
+paths:
+  frontend_dist: dist
+  backend_entry: server/index.js
+
+keep_releases: 3
+
+ecs:
+  host: 123.57.81.221
+  user: root
+  port: 22
+  ssh_key: ~/Documents/J_project/ssh-skills/test-skills.pem
+
+data:
+  sync: auto
+  strategy: sqlite
+  local_path: data/business.db
+  remote_path: shared/data/business.db

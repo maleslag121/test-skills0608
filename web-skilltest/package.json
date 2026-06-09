@@ -1,0 +1,27 @@
+{
+  "name": "web-skilltest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "营业数据报表展板",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node server/index.js",
+    "dev:all": "node server/index.js & vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "db:seed": "node server/db/seed.js",
+    "test": "node --test test/smoke.test.js test/db.test.js",
+    "lint": "node --check vite.config.js && node --check server/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^6.0.0"
+  }
+}
