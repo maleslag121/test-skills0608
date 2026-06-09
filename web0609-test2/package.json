@@ -1,0 +1,25 @@
+{
+  "name": "web0609-test2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "智能客服工单分类与摘要",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node server/index.js",
+    "dev:all": "node server/index.js & vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "test": "node --test test/smoke.test.js",
+    "lint": "node --check vite.config.js && node --check server/index.js && node --check server/classify.js"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^6.0.0"
+  }
+}
