@@ -70,17 +70,17 @@ jobs:
         run: npm run build
 
       - name: Stage release files
+        working-directory: web-skilltest
         run: |
-          mkdir -p .release
-          cp -r dist server deploy .deploy package.json package-lock.json .release/
+          mkdir -p ../release-bundle/deploy
+          cp -r dist server deploy .deploy package.json package-lock.json ../release-bundle/
+          cp -r ../deploy/scripts ../release-bundle/deploy/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: web-skilltest-dist
-          path: |
-            web-skilltest/.release
-            deploy/scripts
+          path: release-bundle
           retention-days: 7
 
   deploy-ecs:
@@ -101,7 +101,7 @@ jobs:
       - name: Parse deploy config
         id: config
         run: |
-          CONFIG=$(node deploy/scripts/parse-config.mjs web-skilltest/.deploy/config.yml)
+          CONFIG=$(node release-bundle/deploy/scripts/parse-config.mjs release-bundle/.deploy/config.yml)
           echo "runtime=$(echo "$CONFIG" | jq -r '.runtime')" >> "$GITHUB_OUTPUT"
           echo "app_name=$(echo "$CONFIG" | jq -r '.app_name')" >> "$GITHUB_OUTPUT"
           echo "app_port=$(echo "$CONFIG" | jq -r '.app_port')" >> "$GITHUB_OUTPUT"
@@ -139,12 +139,8 @@ jobs:
         run: |
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            web-skilltest/.release/ \
+            release-bundle/ \
             "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/"
-          rsync -avz \
-            -e "ssh -i ~/.ssh/deploy_key -p $ECS_PORT -o StrictHostKeyChecking=no" \
-            deploy/scripts/ \
-            "$ECS_USER@$ECS_HOST:${DEPLOY_PATH}/releases/${RELEASE_ID}/deploy/scripts/"
 
       - name: Install production dependencies on ECS
         env:
