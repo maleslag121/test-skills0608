@@ -97,7 +97,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: web-skilltest-dist
-          path: .
+          path: bundle
 
       - name: Parse deploy config
         id: config
