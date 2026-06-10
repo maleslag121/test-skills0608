@@ -1,0 +1,19 @@
+runtime: pm2
+app_name: company-intro
+app_port: 3009
+deploy_path: /var/www/company-intro
+
+health_check:
+  url: http://127.0.0.1:3009/health
+  timeout_seconds: 30
+
+paths:
+  static_root: .
+
+keep_releases: 3
+
+ecs:
+  host: 123.57.81.221
+  user: root
+  port: 22
+  ssh_key: ~/Documents/J_project/ssh-skills/test-skills.pem

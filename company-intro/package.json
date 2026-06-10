@@ -1,0 +1,13 @@
+{
+  "name": "company-intro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "澄观科技公司介绍网页",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node --test test/smoke.test.js",
+    "lint": "node --check server/index.js"
+  }
+}
